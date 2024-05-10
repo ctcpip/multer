@@ -50,7 +50,7 @@
   "scripts": {
     "lint": "standard",
     "lint:fix": "standard --fix",
-    "test": "standard && mocha",
+    "test": "standard && mocha --reporter spec --bail --exit --check-leaks test/",
     "test-ci": "standard && nyc --reporter=lcov --reporter=text npm test",
     "test-cov": "standard && nyc --reporter=html --reporter=text npm test"
   }
