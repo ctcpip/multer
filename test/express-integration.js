@@ -8,6 +8,7 @@ var util = require('./_util')
 var express = require('express')
 var FormData = require('form-data')
 var concat = require('concat-stream')
+const http = require('http')
 
 var port = 34279
 
@@ -104,5 +105,45 @@ describe('Express Integration', function () {
 
       done()
     })
+  })
+
+  it('should not crash on malformed request', function (done) {
+    const upload = multer()
+
+    app.post('/upload', upload.single('file'), function (req, res) {
+      console.log('yee')
+      res.send({})
+    })
+
+    const boundary = 'AaB03x'
+    const body = [
+      '--' + boundary,
+      'Content-Disposition: form-data; name="file"; filename="test.txt"',
+      'Content-Type: text/plain',
+      '',
+      'test without end boundary'
+    ].join('\r\n')
+    const options = {
+      hostname: 'localhost',
+      port,
+      path: '/upload',
+      method: 'POST',
+      headers: {
+        'content-type': 'multipart/form-data; boundary=' + boundary,
+        'content-length': body.length
+      }
+    }
+
+    const req = http.request(options, (res) => {
+      console.log(res.statusCode)
+      done()
+    })
+
+    req.on('error', (err) => {
+      console.error(err)
+    })
+
+    req.write(body)
+    req.end()
   })
 })
