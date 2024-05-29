@@ -111,8 +111,17 @@ describe('Express Integration', function () {
     var upload = multer()
 
     app.post('/upload', upload.single('file'), function (req, res) {
-      console.log('yee')
-      res.send({})
+      res.status(500).end('Request should not be processed')
+    })
+
+    app.use(function (err, req, res, next) {
+      try {
+        assert.strictEqual(err.message, 'Unexpected end of form')
+        res.status(200).end('Correct error')
+        done()
+      } catch (error) {
+        done(error)
+      }
     })
 
     var boundary = 'AaB03x'
@@ -134,13 +143,11 @@ describe('Express Integration', function () {
       }
     }
 
-    var req = http.request(options, (res) => {
-      console.log(res.statusCode)
-      done()
-    })
+    var req = http.request(options)
 
     req.on('error', (err) => {
       console.error(err)
+      done(err)
     })
 
     req.write(body)
