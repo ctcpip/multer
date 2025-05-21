@@ -1,0 +1,83 @@
+const assert = require('assert');
+const { PassThrough } = require('stream');
+const makeMiddleware = require('../lib/make-middleware');
+
+const storage = {
+  _removeFile: (req, file, cb) => setImmediate(cb),
+  _handleFile: (req, file, cb) => setImmediate(() => cb(null, {})),
+};
+
+const fileStrategy = {};
+const fileFilter = (req, file, cb) => cb(null, true);
+
+function createMockReq() {
+  const req = new PassThrough();
+  req.headers = { 'content-type': 'multipart/form-data; boundary=foo' };
+  req.pipe = PassThrough.prototype.pipe;
+  req.resume = PassThrough.prototype.resume;
+  req.unpipe = () => {};
+  return req;
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+describe('Memory leak test without expose-gc', function () {
+  this.timeout(15000);
+
+  const ITERATIONS = 100;
+  const DELAY_MS = 100;
+
+  it('should not leak memory or accumulate listeners after req error', async () => {
+    const middleware = makeMiddleware(() => ({
+      limits: {},
+      storage,
+      fileFilter,
+      fileStrategy,
+      preservePath: false,
+    }));
+
+    const memorySnapshots = [];
+
+    for (let i = 0; i < ITERATIONS; i++) {
+      await new Promise((resolve) => {
+        const req = createMockReq();
+
+        const res = {};
+        const next = (err) => {
+          if (!err) {
+            // console.warn('Warning: next() called without error');
+          } else {
+            assert(err);
+          }
+          resolve();
+        };
+
+        middleware(req, res, next);
+
+        // Emit an error on req to trigger error handling path
+        req.emit('error', new Error('Simulated request error'));
+
+        // Check listeners count (should not grow over iterations)
+        const errorListeners = req.listenerCount('error');
+        assert(errorListeners <= 2, `Too many error listeners: ${errorListeners}`);
+      });
+
+      // Allow Node.js GC to run naturally by waiting a bit between runs
+      await delay(DELAY_MS);
+
+      // Capture memory usage snapshot
+      memorySnapshots.push(process.memoryUsage().heapUsed);
+    }
+
+    // Analyze memory usage: check for steady increase > threshold (~5MB)
+    const initial = memorySnapshots[0];
+    const final = memorySnapshots[memorySnapshots.length - 1];
+    const diffMB = (final - initial) / 1024 / 1024;
+
+    console.log(`Heap growth over ${ITERATIONS} runs: ${diffMB.toFixed(2)} MB`);
+
+    assert(diffMB < 5, 'Possible memory leak detected: heap usage grew significantly');
+  });
+});
